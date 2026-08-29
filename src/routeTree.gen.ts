@@ -13,6 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppAnalyzeRouteImport } from './routes/_app.analyze'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppHistoryRouteImport } from './routes/_app.history'
+import { Route as AppRecommendationsRouteImport } from './routes/_app.recommendations'
+import { Route as AppRiskRouteImport } from './routes/_app.risk'
 import { Route as AppResultIdRouteImport } from './routes/_app.result.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -34,6 +37,21 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHistoryRoute = AppHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRecommendationsRoute = AppRecommendationsRouteImport.update({
+  id: '/recommendations',
+  path: '/recommendations',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRiskRoute = AppRiskRouteImport.update({
+  id: '/risk',
+  path: '/risk',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppResultIdRoute = AppResultIdRouteImport.update({
   id: '/result/$id',
   path: '/result/$id',
@@ -44,12 +62,18 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analyze': typeof AppAnalyzeRoute
   '/dashboard': typeof AppDashboardRoute
+  '/history': typeof AppHistoryRoute
+  '/recommendations': typeof AppRecommendationsRoute
+  '/risk': typeof AppRiskRoute
   '/result/$id': typeof AppResultIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analyze': typeof AppAnalyzeRoute
   '/dashboard': typeof AppDashboardRoute
+  '/history': typeof AppHistoryRoute
+  '/recommendations': typeof AppRecommendationsRoute
+  '/risk': typeof AppRiskRoute
   '/result/$id': typeof AppResultIdRoute
 }
 export interface FileRoutesById {
@@ -58,19 +82,39 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_app/analyze': typeof AppAnalyzeRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/history': typeof AppHistoryRoute
+  '/_app/recommendations': typeof AppRecommendationsRoute
+  '/_app/risk': typeof AppRiskRoute
   '/_app/result/$id': typeof AppResultIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/analyze' | '/dashboard' | '/result/$id'
+  fullPaths:
+    | '/'
+    | '/analyze'
+    | '/dashboard'
+    | '/history'
+    | '/recommendations'
+    | '/risk'
+    | '/result/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/analyze' | '/dashboard' | '/result/$id'
+  to:
+    | '/'
+    | '/analyze'
+    | '/dashboard'
+    | '/history'
+    | '/recommendations'
+    | '/risk'
+    | '/result/$id'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/_app/analyze'
     | '/_app/dashboard'
+    | '/_app/history'
+    | '/_app/recommendations'
+    | '/_app/risk'
     | '/_app/result/$id'
   fileRoutesById: FileRoutesById
 }
@@ -109,6 +153,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/history': {
+      id: '/_app/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof AppHistoryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/recommendations': {
+      id: '/_app/recommendations'
+      path: '/recommendations'
+      fullPath: '/recommendations'
+      preLoaderRoute: typeof AppRecommendationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/risk': {
+      id: '/_app/risk'
+      path: '/risk'
+      fullPath: '/risk'
+      preLoaderRoute: typeof AppRiskRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/result/$id': {
       id: '/_app/result/$id'
       path: '/result/$id'
@@ -122,12 +187,18 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAnalyzeRoute: typeof AppAnalyzeRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppHistoryRoute: typeof AppHistoryRoute
+  AppRecommendationsRoute: typeof AppRecommendationsRoute
+  AppRiskRoute: typeof AppRiskRoute
   AppResultIdRoute: typeof AppResultIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAnalyzeRoute: AppAnalyzeRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppHistoryRoute: AppHistoryRoute,
+  AppRecommendationsRoute: AppRecommendationsRoute,
+  AppRiskRoute: AppRiskRoute,
   AppResultIdRoute: AppResultIdRoute,
 }
 
