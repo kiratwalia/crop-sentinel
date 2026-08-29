@@ -130,7 +130,8 @@ export async function analyzeImage(input: {
       (input.mode === "auto" || f.kind === input.mode),
   );
   const seed = hashString(input.fileName + input.cropId + input.mode);
-  const finding = pool.length ? pool[seed % pool.length] : findings.find((f) => f.id === "healthy")!;
+  const healthy = findings.find((f) => f.id === "healthy")!;
+  const finding = pool[seed % pool.length] ?? healthy;
   const isHealthy = finding.id === "healthy";
   const affectedArea = isHealthy ? 0 : 12 + (seed % 33);
   const severity = severityFromArea(affectedArea);
