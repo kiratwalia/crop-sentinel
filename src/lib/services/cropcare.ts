@@ -1,9 +1,14 @@
 /**
  * Data access layer for CropCare AI.
  *
- * Every function here returns a promise with simulated latency so that each one
- * can later be replaced by a real call (FastAPI + PyTorch inference service,
- * a database read, or a weather API) without touching any component.
+ * Legacy demo functions (`getAnalysis`, legacy `analyzeImage`) keep the existing
+ * Result + History pages working against sample data.
+ *
+ * The new real path uses the FastAPI backend via `./cropcareApi`:
+ *   - `analyzeImageWithBackend` → POST `/api/analyze` → stores a
+ *     `StoredAnalysis.source === "backend"` record → returns its id.
+ *   - `getAnyAnalysis` → returns `StoredAnalysis | undefined` (backend first,
+ *     then the demo store) so the Result page can render either shape.
  */
 import {
   alerts,
@@ -21,6 +26,7 @@ import type {
   Alert,
   Analysis,
   AnalysisMode,
+  BackendAnalysisResponse,
   Crop,
   CropId,
   EnvFactor,
@@ -31,14 +37,26 @@ import type {
   RiskLevel,
   RiskScores,
   Severity,
+  StoredAnalysis,
   WeatherNow,
 } from "@/types";
+import {
+  analyzeImageApi,
+  type BackendApiError,
+  validateImageForApi,
+  type ImageValidationError,
+} from "./cropcareApi";
 
 const delay = <T>(value: T, ms = 220) =>
   new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
 
 /** In-session store for analyses created by the user during the demo. */
 const sessionAnalyses: Analysis[] = [];
+
+/** In-session store for analyses that came back from the FastAPI backend. */
+const backendAnalyses: Extract<StoredAnalysis, { source: "backend" }>[] = [];
+
+export type { BackendApiError, ImageValidationError };
 
 export const getCrops = () => delay<Crop[]>(crops);
 export const getWeather = () => delay<WeatherNow>(weatherNow);
@@ -48,6 +66,8 @@ export const getHealthTrend = () => delay<HealthTrendPoint[]>(healthTrend);
 export const getAlerts = () => delay<Alert[]>(alerts);
 export const getRecommendations = () => delay<Recommendation[]>(recommendations);
 export const getFinding = (id: string): Finding | undefined => findingById(id);
+
+export { validateImageForApi } from "./cropcareApi";
 
 export function getHistory(): Promise<Analysis[]> {
   const all = [...sessionAnalyses, ...sampleAnalyses].sort(
@@ -59,6 +79,14 @@ export function getHistory(): Promise<Analysis[]> {
 export function getAnalysis(id: string): Promise<Analysis | undefined> {
   const found = [...sessionAnalyses, ...sampleAnalyses].find((a) => a.id === id);
   return delay(found ? withEnvFactors(found) : undefined, 120);
+}
+
+export function getAnyAnalysis(id: string): Promise<StoredAnalysis | undefined> {
+  const backendMatch = backendAnalyses.find((a) => a.id === id);
+  if (backendMatch) return delay(backendMatch, 60);
+  const demoMatch = [...sessionAnalyses, ...sampleAnalyses].find((a) => a.id === id);
+  if (!demoMatch) return delay(undefined, 60);
+  return delay<StoredAnalysis>({ ...withEnvFactors(demoMatch), source: "demo" }, 60);
 }
 
 function severityFromArea(area: number): Severity {
@@ -111,9 +139,9 @@ function withEnvFactors(analysis: Analysis): Analysis {
 }
 
 /**
- * Demo inference. Replace this body with a POST to the FastAPI/PyTorch endpoint.
- * The returned shape is intentionally identical to what a real model response
- * would provide.
+ * Demo inference. Kept for backwards compatibility with pages that have not
+ * been switched to the FastAPI backend yet. New flows should use
+ * `analyzeImageWithBackend`.
  */
 export async function analyzeImage(input: {
   cropId: CropId;
@@ -155,4 +183,56 @@ export async function analyzeImage(input: {
   const stored = withEnvFactors(analysis);
   sessionAnalyses.unshift(stored);
   return stored;
+}
+
+/**
+ * Upload an image to the FastAPI backend at `POST /api/analyze` and store the
+ * raw backend response in `backendAnalyses` for rendering on the Result page.
+ *
+ * Throws either:
+ *   - `ImageValidationError` (client-side, never hits the network) when the
+ *     image is missing / of wrong MIME / empty / too big.
+ *   - `BackendApiError` when the network / backend returns a problem (field +
+ *     message mirrors the backend's validation JSON).
+ */
+export async function analyzeImageWithBackend(input: {
+  cropId: CropId;
+  mode: AnalysisMode;
+  imageUrl: string;
+  fileName: string;
+  file: File;
+  signal?: AbortSignal;
+}): Promise<Extract<StoredAnalysis, { source: "backend" }>> {
+  const preValidation = validateImageForApi(input.file);
+  if (preValidation) {
+    // rethrow as a typed error so callers have one shape
+    const err: BackendApiError = {
+      field: "image",
+      statusCode: 400,
+      error: "Invalid image",
+      message: preValidation.message,
+      detail: preValidation,
+    };
+    throw err;
+  }
+
+  const resp: BackendAnalysisResponse = await analyzeImageApi({
+    cropId: input.cropId,
+    mode: input.mode,
+    file: input.file,
+    signal: input.signal,
+  });
+
+  const record: Extract<StoredAnalysis, { source: "backend" }> = {
+    id: `bk-${Date.now().toString().slice(-8)}${Math.random().toString(36).slice(2, 6)}`,
+    source: "backend",
+    cropId: input.cropId,
+    mode: input.mode,
+    imageUrl: input.imageUrl,
+    fileName: input.fileName,
+    createdAt: new Date().toISOString(),
+    backend: resp,
+  };
+  backendAnalyses.unshift(record);
+  return record;
 }

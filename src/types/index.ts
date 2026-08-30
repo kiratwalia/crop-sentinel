@@ -6,6 +6,63 @@ export type Severity = "low" | "moderate" | "high" | "critical";
 
 export type RiskLevel = "low" | "moderate" | "high" | "severe";
 
+export const API_SEVERITY_TO_SEVERITY: Record<string, Severity> = {
+  Low: "low",
+  Medium: "moderate",
+  High: "high",
+  Critical: "critical",
+};
+
+export const API_RISK_TO_RISK: Record<string, RiskLevel> = {
+  Low: "low",
+  Medium: "moderate",
+  High: "high",
+  Severe: "severe",
+};
+
+/** Raw response shape returned by the FastAPI backend POST /api/analyze. */
+export interface BackendAnalysisResponse {
+  crop: string;
+  condition: string;
+  type: "disease" | "pest";
+  confidence: number; // 0..1
+  severity: string; // "Low" | "Medium" | "High" | "Critical" etc
+  risk: string;     // "Low" | "Medium" | "High" | "Severe"  etc
+  symptoms: string[];
+  immediate_actions: string[];
+  prevention: string[];
+  environmental_factors: string[];
+  demo?: boolean;
+}
+
+export interface BackendApiError {
+  field?: string;
+  message?: string;
+  statusCode?: number;
+  error?: string;
+  detail?: unknown;
+  rawBody?: unknown;
+}
+
+/**
+ * A stored analysis can be either:
+ *  - the existing frontend-only Analysis (populated from demo data / session), or
+ *  - a remote backend analysis that stores the raw BackendAnalysisResponse alongside
+ *    the uploaded preview image so the Result page can render backend payloads directly.
+ */
+export type StoredAnalysis =
+  | ({ source: "demo" } & Analysis)
+  | ({
+      source: "backend";
+      id: string;
+      cropId: CropId;
+      mode: AnalysisMode;
+      imageUrl: string;
+      fileName: string;
+      createdAt: string;
+      backend: BackendAnalysisResponse;
+    });
+
 export interface Crop {
   id: CropId;
   name: string;

@@ -1,14 +1,27 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useRef, useState } from "react";
-import { Bug, ImagePlus, Loader2, ScanLine, Sparkles, Stethoscope, Trash2, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertCircle,
+  Bug,
+  ImagePlus,
+  Loader2,
+  RefreshCw,
+  ScanLine,
+  Sparkles,
+  Stethoscope,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { AppShell } from "@/components/cropcare/app-shell";
 import { DemoBadge } from "@/components/cropcare/badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { crops } from "@/data/mock";
-import { analyzeImage } from "@/lib/services/cropcare";
+import { analyzeImageWithBackend, type BackendApiError } from "@/lib/services/cropcare";
 import type { AnalysisMode, CropId } from "@/types";
 
 export const Route = createFileRoute("/_app/analyze")({
@@ -36,36 +49,93 @@ const modes: { id: AnalysisMode; label: string; text: string; icon: typeof Bug }
   { id: "auto", label: "Automatic", text: "Let the model decide what to look for", icon: Sparkles },
 ];
 
-const stages = ["Preparing the image", "Running the model", "Checking weather risk", "Writing your advice"];
+const stages = ["Preparing the image", "Uploading to CropCare backend", "Running the model", "Writing your advice"];
 
 function AnalyzePage() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<File | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
   const [cropId, setCropId] = useState<CropId>("tomato");
   const [mode, setMode] = useState<AnalysisMode>("auto");
   const [file, setFile] = useState<{ url: string; name: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState(0);
+  const [error, setError] = useState<BackendApiError | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      if (file) URL.revokeObjectURL(file.url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const accept = useCallback((f: File | undefined) => {
     if (!f || !f.type.startsWith("image/")) return;
-    setFile({ url: URL.createObjectURL(f), name: f.name });
+    fileInputRef.current = f;
+    setError(null);
+    setFile((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return { url: URL.createObjectURL(f), name: f.name };
+    });
   }, []);
 
-  async function run() {
-    if (!file) return;
+  const progressRatio = useMemo(() => ((stage + 1) / stages.length) * 100, [stage]);
+
+  async function run(retry = false) {
+    if (!file || !fileInputRef.current) {
+      setError({
+        field: "image",
+        statusCode: 400,
+        error: "Missing image",
+        message: retry ? "Upload a clear leaf photo, then try again." : "Upload a leaf photo before running the analysis.",
+      });
+      return;
+    }
     setLoading(true);
+    setError(null);
     setStage(0);
     const timer = setInterval(() => setStage((s) => Math.min(s + 1, stages.length - 1)), 550);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const result = await analyzeImage({ cropId, mode, imageUrl: file.url, fileName: file.name });
+      const result = await analyzeImageWithBackend({
+        cropId,
+        mode,
+        imageUrl: file.url,
+        fileName: file.name,
+        file: fileInputRef.current,
+        signal: controller.signal,
+      });
       navigate({ to: "/result/$id", params: { id: result.id } });
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError" || (err as BackendApiError)?.error === "Request cancelled") {
+        setError({
+          statusCode: 0,
+          error: "Request cancelled",
+          message: "Analysis was cancelled.",
+        });
+      } else if ((err as BackendApiError)?.message) {
+        setError(err as BackendApiError);
+      } else {
+        setError({
+          statusCode: 500,
+          error: "Unexpected error",
+          message: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
     } finally {
       clearInterval(timer);
       setLoading(false);
+      if (abortRef.current === controller) abortRef.current = null;
     }
   }
+
+  const isFieldError = (field: string) => error?.field === field;
 
   return (
     <AppShell title="Analyze your crop" subtitle="Three quick steps — crop, photo, analyze">
@@ -82,7 +152,10 @@ function AnalyzePage() {
                   <button
                     key={crop.id}
                     type="button"
-                    onClick={() => setCropId(crop.id)}
+                    onClick={() => {
+                      setCropId(crop.id);
+                      setError(null);
+                    }}
                     className={cn(
                       "rounded-xl border p-3 text-center transition-all",
                       cropId === crop.id
@@ -110,7 +183,10 @@ function AnalyzePage() {
                   <button
                     key={id}
                     type="button"
-                    onClick={() => setMode(id)}
+                    onClick={() => {
+                      setMode(id);
+                      setError(null);
+                    }}
                     className={cn(
                       "rounded-xl border p-4 text-left transition-all",
                       mode === id
@@ -138,12 +214,17 @@ function AnalyzePage() {
               <input
                 ref={inputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
                 className="hidden"
                 onChange={(e) => accept(e.target.files?.[0])}
               />
               {file ? (
-                <div className="overflow-hidden rounded-xl border border-border">
+                <div
+                  className={cn(
+                    "overflow-hidden rounded-xl border",
+                    isFieldError("image") ? "border-danger/70 ring-2 ring-danger/20" : "border-border",
+                  )}
+                >
                   <img src={file.url} alt="Selected leaf preview" className="h-64 w-full object-cover" />
                   <div className="flex items-center justify-between gap-2 bg-muted/40 p-3">
                     <p className="truncate text-sm text-muted-foreground">{file.name}</p>
@@ -151,7 +232,16 @@ function AnalyzePage() {
                       <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
                         <ImagePlus className="size-4" /> Replace
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          URL.revokeObjectURL(file.url);
+                          fileInputRef.current = null;
+                          setFile(null);
+                          setError(null);
+                        }}
+                      >
                         <Trash2 className="size-4" /> Remove
                       </Button>
                     </div>
@@ -176,19 +266,83 @@ function AnalyzePage() {
                   className={cn(
                     "flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-colors",
                     dragging ? "border-primary bg-primary/8" : "border-border hover:bg-muted/40",
+                    isFieldError("image") ? "border-danger/70 ring-2 ring-danger/20" : null,
                   )}
                 >
                   <span className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <Upload className="size-6" />
                   </span>
                   <p className="mt-4 font-medium">Drag a photo here, or tap to choose</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    JPG or PNG from your phone camera works fine
-                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">JPG, PNG or WebP — up to 10 MB</p>
                 </div>
               )}
 
-              <Button className="mt-5 w-full" size="lg" disabled={!file || loading} onClick={run}>
+              {error ? (
+                <Alert variant="destructive" className="mt-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger" />
+                    <div className="min-w-0 flex-1">
+                      <AlertTitle className="flex items-center gap-2">
+                        Analysis failed
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto h-7 px-2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setError(null)}
+                          aria-label="Dismiss error"
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      </AlertTitle>
+                      <AlertDescription>
+                        <p className="text-sm text-muted-foreground">{error.message}</p>
+                        {error.field ? (
+                          <p className="mt-1 text-xs text-muted-foreground/80">
+                            Field: <span className="font-mono">{error.field}</span>
+                            {error.statusCode ? <> · Status {error.statusCode}</> : null}
+                          </p>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              setError(null);
+                              void run(true);
+                            }}
+                            disabled={loading}
+                          >
+                            <RefreshCw className="size-4" /> Retry analysis
+                          </Button>
+                          {error.field === "image" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => inputRef.current?.click()}
+                            >
+                              <ImagePlus className="size-4" /> Pick a different image
+                            </Button>
+                          ) : null}
+                          {loading && abortRef.current ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => abortRef.current?.abort()}
+                            >
+                              Cancel
+                            </Button>
+                          ) : null}
+                        </div>
+                      </AlertDescription>
+                    </div>
+                  </div>
+                </Alert>
+              ) : null}
+
+              <Button className="mt-5 w-full" size="lg" disabled={!file || loading} onClick={() => void run(false)}>
                 {loading ? (
                   <>
                     <Loader2 className="size-4 animate-spin" /> Analyzing…
@@ -202,8 +356,21 @@ function AnalyzePage() {
 
               {loading && (
                 <div className="mt-4 rounded-xl bg-muted/50 p-4">
-                  <p className="text-sm font-medium">{stages[stage]}…</p>
-                  <Progress value={((stage + 1) / stages.length) * 100} className="mt-2 h-1.5" />
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{stages[stage]}…</p>
+                    {abortRef.current ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-muted-foreground"
+                        onClick={() => abortRef.current?.abort()}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
+                  <Progress value={progressRatio} className="mt-2 h-1.5" />
                 </div>
               )}
             </CardContent>
