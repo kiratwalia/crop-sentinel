@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { crops } from "@/data/mock";
 import { analyzeImage } from "@/lib/services/cropcare";
+import { fileToStorableImageUrl } from "@/lib/image";
 import type { AnalysisMode, CropId } from "@/types";
 
 export const Route = createFileRoute("/_app/analyze")({
@@ -46,11 +47,24 @@ function AnalyzePage() {
   const [file, setFile] = useState<{ url: string; name: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [stage, setStage] = useState(0);
 
-  const accept = useCallback((f: File | undefined) => {
+  const accept = useCallback(async (f: File | undefined) => {
     if (!f || !f.type.startsWith("image/")) return;
-    setFile({ url: URL.createObjectURL(f), name: f.name });
+    const previewUrl = URL.createObjectURL(f);
+    setFile({ url: previewUrl, name: f.name });
+    setPreparing(true);
+    try {
+      // Keep a self-contained copy of the photo so the result survives a refresh.
+      const storableUrl = await fileToStorableImageUrl(f);
+      setFile({ url: storableUrl, name: f.name });
+      URL.revokeObjectURL(previewUrl);
+    } catch {
+      // fall back to the object URL preview
+    } finally {
+      setPreparing(false);
+    }
   }, []);
 
   async function run() {
@@ -140,7 +154,7 @@ function AnalyzePage() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => accept(e.target.files?.[0])}
+                onChange={(e) => void accept(e.target.files?.[0])}
               />
               {file ? (
                 <div className="overflow-hidden rounded-xl border border-border">
@@ -171,7 +185,7 @@ function AnalyzePage() {
                   onDrop={(e) => {
                     e.preventDefault();
                     setDragging(false);
-                    accept(e.dataTransfer.files?.[0]);
+                    void accept(e.dataTransfer.files?.[0]);
                   }}
                   className={cn(
                     "flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-colors",
@@ -188,7 +202,12 @@ function AnalyzePage() {
                 </div>
               )}
 
-              <Button className="mt-5 w-full" size="lg" disabled={!file || loading} onClick={run}>
+              <Button
+                className="mt-5 w-full"
+                size="lg"
+                disabled={!file || loading || preparing}
+                onClick={run}
+              >
                 {loading ? (
                   <>
                     <Loader2 className="size-4 animate-spin" /> Analyzing…
