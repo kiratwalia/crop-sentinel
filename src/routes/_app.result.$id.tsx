@@ -44,12 +44,16 @@ export const Route = createFileRoute("/_app/result/$id")({
 function ResultPage() {
   const { id } = Route.useParams();
   const [heatmap, setHeatmap] = useState(true);
-  const { data: analysis, isLoading } = useQuery({
+  const { data: analysis, isPending } = useQuery({
     queryKey: ["analysis", id],
     queryFn: () => getAnalysis(id),
+    staleTime: Infinity,
   });
 
-  if (isLoading) {
+  const finding = analysis ? getFinding(analysis.findingId) : undefined;
+  const crop = analysis ? cropById(analysis.cropId) : undefined;
+
+  if (isPending) {
     return (
       <AppShell title="Analysis result">
         <Skeleton className="h-96 w-full" />
@@ -57,7 +61,7 @@ function ResultPage() {
     );
   }
 
-  if (!analysis) {
+  if (!analysis || !finding || !crop) {
     return (
       <AppShell title="Analysis result">
         <Card>
@@ -74,9 +78,6 @@ function ResultPage() {
       </AppShell>
     );
   }
-
-  const finding = getFinding(analysis.findingId)!;
-  const crop = cropById(analysis.cropId)!;
 
   return (
     <AppShell
