@@ -47,6 +47,9 @@ function ResultPage() {
   const { data: analysis, isLoading } = useQuery({
     queryKey: ["analysis", id],
     queryFn: () => getAnalysis(id),
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 
   if (isLoading) {
@@ -85,7 +88,8 @@ function ResultPage() {
       actions={
         <Button asChild size="sm" variant="outline">
           <Link to="/analyze">
-            <RefreshCw className="size-4" /> <span className="hidden sm:inline">Analyze another</span>
+            <RefreshCw className="size-4" />{" "}
+            <span className="hidden sm:inline">Analyze another</span>
           </Link>
         </Button>
       }
