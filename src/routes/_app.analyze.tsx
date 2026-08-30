@@ -1,6 +1,15 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
-import { Bug, ImagePlus, Loader2, ScanLine, Sparkles, Stethoscope, Trash2, Upload } from "lucide-react";
+import {
+  Bug,
+  ImagePlus,
+  Loader2,
+  ScanLine,
+  Sparkles,
+  Stethoscope,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { AppShell } from "@/components/cropcare/app-shell";
 import { DemoBadge } from "@/components/cropcare/badges";
 import { Button } from "@/components/ui/button";
@@ -31,12 +40,22 @@ export const Route = createFileRoute("/_app/analyze")({
 });
 
 const modes: { id: AnalysisMode; label: string; text: string; icon: typeof Bug }[] = [
-  { id: "disease", label: "Disease", text: "Check for fungal and bacterial leaf diseases", icon: Stethoscope },
+  {
+    id: "disease",
+    label: "Disease",
+    text: "Check for fungal and bacterial leaf diseases",
+    icon: Stethoscope,
+  },
   { id: "pest", label: "Pest", text: "Check for insect damage and infestation", icon: Bug },
   { id: "auto", label: "Automatic", text: "Let the model decide what to look for", icon: Sparkles },
 ];
 
-const stages = ["Preparing the image", "Running the model", "Checking weather risk", "Writing your advice"];
+const stages = [
+  "Preparing the image",
+  "Running the model",
+  "Checking weather risk",
+  "Writing your advice",
+];
 
 function AnalyzePage() {
   const navigate = useNavigate();
@@ -48,9 +67,35 @@ function AnalyzePage() {
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState(0);
 
-  const accept = useCallback((f: File | undefined) => {
+  async function resizeAndEncodeImage(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const blobUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(blobUrl);
+        const maxDim = 1024;
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const width = Math.round(img.width * scale);
+        const height = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(blobUrl);
+        reject(e);
+      };
+      img.src = blobUrl;
+    });
+  }
+
+  const accept = useCallback(async (f: File | undefined) => {
     if (!f || !f.type.startsWith("image/")) return;
-    setFile({ url: URL.createObjectURL(f), name: f.name });
+    const dataUrl = await resizeAndEncodeImage(f);
+    setFile({ url: dataUrl, name: f.name });
   }, []);
 
   async function run() {
@@ -118,7 +163,12 @@ function AnalyzePage() {
                         : "border-border hover:border-primary/40 hover:bg-muted/50",
                     )}
                   >
-                    <Icon className={cn("size-5", mode === id ? "text-primary" : "text-muted-foreground")} />
+                    <Icon
+                      className={cn(
+                        "size-5",
+                        mode === id ? "text-primary" : "text-muted-foreground",
+                      )}
+                    />
                     <p className="mt-2 font-medium">{label}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{text}</p>
                   </button>
@@ -144,7 +194,11 @@ function AnalyzePage() {
               />
               {file ? (
                 <div className="overflow-hidden rounded-xl border border-border">
-                  <img src={file.url} alt="Selected leaf preview" className="h-64 w-full object-cover" />
+                  <img
+                    src={file.url}
+                    alt="Selected leaf preview"
+                    className="h-64 w-full object-cover"
+                  />
                   <div className="flex items-center justify-between gap-2 bg-muted/40 p-3">
                     <p className="truncate text-sm text-muted-foreground">{file.name}</p>
                     <div className="flex gap-2">

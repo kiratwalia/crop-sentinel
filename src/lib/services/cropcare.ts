@@ -37,8 +37,38 @@ import type {
 const delay = <T>(value: T, ms = 220) =>
   new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
 
+const STORAGE_KEY = "cropcare-session-analyses";
+
 /** In-session store for analyses created by the user during the demo. */
-const sessionAnalyses: Analysis[] = [];
+let sessionAnalyses: Analysis[] = [];
+
+function isBrowser() {
+  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+}
+
+function loadSessionAnalyses() {
+  if (!isBrowser()) return;
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      sessionAnalyses = JSON.parse(raw) as Analysis[];
+    }
+  } catch (e) {
+    console.error("Failed to load session analyses", e);
+  }
+}
+
+function saveSessionAnalyses() {
+  if (!isBrowser()) return;
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sessionAnalyses));
+  } catch (e) {
+    console.error("Failed to save session analyses", e);
+  }
+}
+
+// Hydrate the in-memory store from sessionStorage when this module loads on the client.
+loadSessionAnalyses();
 
 export const getCrops = () => delay<Crop[]>(crops);
 export const getWeather = () => delay<WeatherNow>(weatherNow);
@@ -50,15 +80,17 @@ export const getRecommendations = () => delay<Recommendation[]>(recommendations)
 export const getFinding = (id: string): Finding | undefined => findingById(id);
 
 export function getHistory(): Promise<Analysis[]> {
+  loadSessionAnalyses();
   const all = [...sessionAnalyses, ...sampleAnalyses].sort(
     (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
   );
   return delay(all);
 }
 
-export function getAnalysis(id: string): Promise<Analysis | undefined> {
+export function getAnalysis(id: string): Promise<Analysis | null> {
+  loadSessionAnalyses();
   const found = [...sessionAnalyses, ...sampleAnalyses].find((a) => a.id === id);
-  return delay(found ? withEnvFactors(found) : undefined, 120);
+  return delay(found ? withEnvFactors(found) : null, 120);
 }
 
 function severityFromArea(area: number): Severity {
@@ -69,7 +101,13 @@ function severityFromArea(area: number): Severity {
 }
 
 function riskFromSeverity(sev: Severity): RiskLevel {
-  return sev === "critical" ? "severe" : sev === "high" ? "high" : sev === "moderate" ? "moderate" : "low";
+  return sev === "critical"
+    ? "severe"
+    : sev === "high"
+      ? "high"
+      : sev === "moderate"
+        ? "moderate"
+        : "low";
 }
 
 function hashString(input: string) {
@@ -138,7 +176,7 @@ export async function analyzeImage(input: {
   const confidence = isHealthy ? 94 : 76 + (seed % 20);
 
   const analysis: Analysis = {
-    id: `an-${Date.now().toString().slice(-6)}`,
+    id: `an-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
     cropId: input.cropId,
     mode: input.mode,
     findingId: finding.id,
@@ -154,5 +192,6 @@ export async function analyzeImage(input: {
 
   const stored = withEnvFactors(analysis);
   sessionAnalyses.unshift(stored);
+  saveSessionAnalyses();
   return stored;
 }
