@@ -54,7 +54,25 @@ const delay = <T>(value: T, ms = 220) =>
 const sessionAnalyses: Analysis[] = [];
 
 /** In-session store for analyses that came back from the FastAPI backend. */
-const backendAnalyses: Extract<StoredAnalysis, { source: "backend" }>[] = [];
+const backendAnalyses: Extract<StoredAnalysis, { source: "backend" }>[] = (() => {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = sessionStorage.getItem("cropcare-backend-analyses");
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+})();
+
+function saveBackendAnalyses() {
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.setItem("cropcare-backend-analyses", JSON.stringify(backendAnalyses));
+    } catch {
+      // SessionStorage might be full or disabled
+    }
+  }
+}
 
 export type { BackendApiError, ImageValidationError };
 
@@ -234,5 +252,6 @@ export async function analyzeImageWithBackend(input: {
     backend: resp,
   };
   backendAnalyses.unshift(record);
+  saveBackendAnalyses();
   return record;
 }

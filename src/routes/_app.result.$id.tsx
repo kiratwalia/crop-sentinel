@@ -20,7 +20,9 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { DEMO_NOTICE, cropById } from "@/data/mock";
-import { getAnalysis, getFinding } from "@/lib/services/cropcare";
+import { getAnyAnalysis, getFinding } from "@/lib/services/cropcare";
+import type { StoredAnalysis, Finding } from "@/types";
+import { API_SEVERITY_TO_SEVERITY, API_RISK_TO_RISK } from "@/types";
 
 export const Route = createFileRoute("/_app/result/$id")({
   head: () => ({
@@ -41,13 +43,60 @@ export const Route = createFileRoute("/_app/result/$id")({
   component: ResultPage,
 });
 
+function normalizeAnalysis(analysis: StoredAnalysis) {
+  if (analysis.source === "backend") {
+    const b = analysis.backend;
+    return {
+      id: analysis.id,
+      cropId: analysis.cropId,
+      findingId: b.condition.toLowerCase().replace(/\s+/g, "-"),
+      confidence: Math.round(b.confidence * 100),
+      severity: API_SEVERITY_TO_SEVERITY[b.severity] || "moderate",
+      riskLevel: API_RISK_TO_RISK[b.risk] || "moderate",
+      imageUrl: analysis.imageUrl,
+      affectedArea: 25, // Default since backend doesn't provide this
+      envFactors: b.environmental_factors.map((f, i) => ({
+        label: f.split(":")[0] || `Factor ${i + 1}`,
+        value: f.split(":")[1] || "Medium",
+        contribution: 50 + (i * 10),
+        note: f,
+      })),
+      isSample: b.demo || false,
+      backend: b, // Preserve backend data for finding fallback
+    };
+  }
+  return analysis;
+}
+
+function getFindingForAnalysis(analysis: any): Finding {
+  if (analysis.backend) {
+    const b = analysis.backend;
+    return {
+      id: analysis.findingId,
+      kind: b.type,
+      name: b.condition,
+      scientificName: b.condition,
+      crops: [analysis.cropId],
+      summary: `${b.condition} detected with ${Math.round(b.confidence * 100)}% confidence.`,
+      symptoms: b.symptoms,
+      immediateActions: b.immediate_actions,
+      prevention: b.prevention,
+      organicOptions: ["Neem oil", "Copper fungicide"],
+      chemicalOptions: ["Chlorothalonil", "Mancozeb"],
+      favourableConditions: b.environmental_factors,
+    };
+  }
+  return getFinding(analysis.findingId)!;
+}
+
 function ResultPage() {
   const { id } = Route.useParams();
   const [heatmap, setHeatmap] = useState(true);
-  const { data: analysis, isLoading } = useQuery({
+  const { data: rawAnalysis, isLoading } = useQuery({
     queryKey: ["analysis", id],
-    queryFn: () => getAnalysis(id),
+    queryFn: () => getAnyAnalysis(id),
   });
+  const analysis = rawAnalysis ? normalizeAnalysis(rawAnalysis) : null;
 
   if (isLoading) {
     return (
@@ -66,16 +115,16 @@ function ResultPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               Demo analyses are kept for the current session only.
             </p>
-            <Button asChild className="mt-5">
-              <Link to="/analyze">Run a new analysis</Link>
-            </Button>
+            <Link to="/analyze" className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2 mt-5">
+              Run a new analysis
+            </Link>
           </CardContent>
         </Card>
       </AppShell>
     );
   }
 
-  const finding = getFinding(analysis.findingId)!;
+  const finding = getFindingForAnalysis(analysis);
   const crop = cropById(analysis.cropId)!;
 
   return (
@@ -83,11 +132,9 @@ function ResultPage() {
       title={finding.name}
       subtitle={`${crop.emoji} ${crop.name} · analysis ${analysis.id}`}
       actions={
-        <Button asChild size="sm" variant="outline">
-          <Link to="/analyze">
-            <RefreshCw className="size-4" /> <span className="hidden sm:inline">Analyze another</span>
-          </Link>
-        </Button>
+        <Link to="/analyze" className="inline-flex items-center gap-2 h-8 rounded-md px-3 text-xs border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground">
+          <RefreshCw className="size-4" /> <span className="hidden sm:inline">Analyze another</span>
+        </Link>
       }
     >
       <div className="space-y-5">
@@ -297,17 +344,15 @@ function ResultPage() {
               ))}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button asChild variant="outline" size="sm">
-                <Link to="/risk">
-                  Open risk monitor <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="sm">
-                <Link to="/recommendations">See recommendations</Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm">
-                <Link to="/history">Saved to history</Link>
-              </Button>
+              <Link to="/risk" className="inline-flex items-center gap-2 h-8 rounded-md px-3 text-xs border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground">
+                Open risk monitor <ArrowRight className="size-4" />
+              </Link>
+              <Link to="/recommendations" className="inline-flex items-center gap-2 h-8 rounded-md px-3 text-xs border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground">
+                See recommendations
+              </Link>
+              <Link to="/history" className="inline-flex items-center gap-2 h-8 rounded-md px-3 text-xs hover:bg-accent hover:text-accent-foreground">
+                Saved to history
+              </Link>
             </div>
           </CardContent>
         </Card>
