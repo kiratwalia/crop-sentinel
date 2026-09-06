@@ -40,6 +40,7 @@ import type {
   StoredAnalysis,
   WeatherNow,
 } from "@/types";
+import { API_SEVERITY_TO_SEVERITY } from "@/types";
 import {
   analyzeImageApi,
   type BackendApiError,
@@ -83,12 +84,47 @@ export const getRiskForecast = () => delay<RiskForecastPoint[]>(riskForecast);
 export const getHealthTrend = () => delay<HealthTrendPoint[]>(healthTrend);
 export const getAlerts = () => delay<Alert[]>(alerts);
 export const getRecommendations = () => delay<Recommendation[]>(recommendations);
-export const getFinding = (id: string): Finding | undefined => findingById(id);
+export function getFinding(id: string): Finding | undefined {
+  const match = findingById(id);
+  if (match) return match;
+  const titleCase = id
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+  return {
+    id,
+    kind: id.includes("mite") || id.includes("pest") || id.includes("armyworm") || id.includes("whitefly") ? "pest" : "disease",
+    name: titleCase,
+    scientificName: titleCase,
+    crops: ["tomato", "potato", "maize", "grape", "apple"],
+    summary: `${titleCase} detected by CropCare AI.`,
+    symptoms: ["Visual foliar symptoms detected on leaf surface."],
+    immediateActions: ["Inspect affected plants and nearby foliage closely."],
+    prevention: ["Follow recommended field sanitation and crop monitoring practices."],
+    organicOptions: ["Neem oil spray"],
+    chemicalOptions: ["Consult local agricultural extension"],
+    favourableConditions: [],
+  };
+}
 
-export { validateImageForApi } from "./cropcareApi";
+export { validateImageForApi, type BackendApiError } from "./cropcareApi";
 
 export function getHistory(): Promise<Analysis[]> {
-  const all = [...sessionAnalyses, ...sampleAnalyses].sort(
+  const backendConverted: Analysis[] = backendAnalyses.map((b) => ({
+    id: b.id,
+    cropId: b.cropId,
+    mode: b.mode,
+    findingId: b.backend.condition.toLowerCase().replace(/\s+/g, "-"),
+    confidence: Math.round(b.backend.confidence * 100),
+    severity: (API_SEVERITY_TO_SEVERITY[b.backend.severity] || "unknown") as Severity,
+    riskLevel: (b.backend.severity === "high" ? "high" : b.backend.severity === "low" ? "low" : "moderate") as RiskLevel,
+    imageUrl: b.imageUrl,
+    createdAt: b.createdAt,
+    affectedArea: 0,
+    envFactors: [],
+    isSample: false,
+  }));
+  const all = [...backendConverted, ...sessionAnalyses, ...sampleAnalyses].sort(
     (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
   );
   return delay(all);
@@ -238,7 +274,7 @@ export async function analyzeImageWithBackend(input: {
     cropId: input.cropId,
     mode: input.mode,
     file: input.file,
-    signal: input.signal,
+    ...(input.signal !== undefined && { signal: input.signal }),
   });
 
   const record: Extract<StoredAnalysis, { source: "backend" }> = {

@@ -52,8 +52,8 @@ const cropRisk: Record<string, { disease: number; pest: number }> = {
   tomato: { disease: 78, pest: 61 },
   potato: { disease: 86, pest: 44 },
   maize: { disease: 41, pest: 72 },
-  wheat: { disease: 32, pest: 25 },
-  rice: { disease: 66, pest: 48 },
+  grape: { disease: 55, pest: 38 },
+  apple: { disease: 62, pest: 29 },
 };
 
 function RiskPage() {

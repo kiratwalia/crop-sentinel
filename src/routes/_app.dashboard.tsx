@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/cropcare/app-shell";
 import { DemoBadge, SeverityBadge } from "@/components/cropcare/badges";
+import { CropIcon } from "@/components/cropcare/crop-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -105,7 +106,7 @@ function Dashboard() {
               <Card key={crop.id} className="card-lift">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl">{crop.emoji}</span>
+                    <CropIcon cropId={crop.id} size="md" />
                     <span className={`font-display text-xl font-bold ${healthTone(crop.healthScore)}`}>
                       {crop.healthScore}
                     </span>
@@ -238,8 +239,9 @@ function Dashboard() {
                   className="rounded-xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted/60"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-medium">
-                      {cropById(alert.cropId)?.emoji} {alert.title}
+                    <p className="font-medium flex items-center gap-2">
+                      <CropIcon cropId={alert.cropId} size="sm" />
+                      <span>{alert.title}</span>
                     </p>
                     <SeverityBadge severity={alert.severity} />
                   </div>

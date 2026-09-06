@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/cropcare/app-shell";
 import { DemoBadge } from "@/components/cropcare/badges";
+import { CropIcon } from "@/components/cropcare/crop-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -163,7 +164,9 @@ function AnalyzePage() {
                         : "border-border hover:border-primary/40 hover:bg-muted/50",
                     )}
                   >
-                    <span className="text-2xl">{crop.emoji}</span>
+                    <div className="flex justify-center">
+                      <CropIcon cropId={crop.id} size="lg" />
+                    </div>
                     <p className="mt-1.5 text-sm font-medium">{crop.name}</p>
                     <p className="text-[11px] text-muted-foreground">{crop.localName}</p>
                   </button>

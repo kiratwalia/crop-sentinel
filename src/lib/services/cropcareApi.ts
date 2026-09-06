@@ -38,7 +38,7 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export function getApiBaseUrl(): string {
   const vite = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-  const value = vite?.VITE_API_BASE_URL;
+  const value = vite?.["VITE_API_BASE_URL"];
   if (value && value.trim()) return value.replace(/\/$/, "");
   return DEFAULT_BASE_URL;
 }
@@ -114,16 +114,17 @@ export async function analyzeImageApi(input: {
   } catch (err) {
     const networkErr: BackendApiError = {
       field: undefined,
+      message:
+        err instanceof Error && err.name === "AbortError"
+          ? "Analysis was cancelled."
+          : `Could not reach the CropCare backend at ${base}. Check it is running or your connection.`,
       statusCode: 0,
       error:
         err instanceof Error && err.name === "AbortError"
           ? "Request cancelled"
           : "Network error",
       detail: err instanceof Error ? err.message : String(err),
-      message:
-        err instanceof Error && err.name === "AbortError"
-          ? "Analysis was cancelled."
-          : `Could not reach the CropCare backend at ${base}. Check it is running or your connection.`,
+      rawBody: err instanceof Error ? err.message : String(err),
     };
     throw networkErr;
   }
@@ -144,15 +145,15 @@ export async function analyzeImageApi(input: {
     };
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       const obj = parsed as Record<string, unknown>;
-      if (typeof obj.detail === "object" && obj.detail !== null) {
-        const d = obj.detail as Record<string, unknown>;
-        if (typeof d.field === "string") error.field = d.field;
-        if (typeof d.message === "string") error.message = d.message;
-        error.detail = obj.detail;
-      } else if (typeof obj.detail === "string") {
-        error.message = obj.detail;
+      if (typeof obj["detail"] === "object" && obj["detail"] !== null) {
+        const d = obj["detail"] as Record<string, unknown>;
+        if (typeof d["field"] === "string") error.field = d["field"];
+        if (typeof d["message"] === "string") error.message = d["message"];
+        error.detail = obj["detail"];
+      } else if (typeof obj["detail"] === "string") {
+        error.message = obj["detail"];
       }
-      if (!error.message && typeof obj.message === "string") error.message = obj.message;
+      if (!error.message && typeof obj["message"] === "string") error.message = obj["message"];
     }
     if (!error.message) {
       error.message =
@@ -177,25 +178,31 @@ export async function analyzeImageApi(input: {
 
   const obj = parsed as Record<string, unknown>;
   return {
-    crop: typeof obj.crop === "string" ? obj.crop : "",
-    condition: typeof obj.condition === "string" ? obj.condition : "Unknown",
-    type: obj.type === "pest" ? "pest" : "disease",
-    confidence: typeof obj.confidence === "number" ? obj.confidence : 0,
-    severity: typeof obj.severity === "string" ? obj.severity : "Medium",
-    risk: typeof obj.risk === "string" ? obj.risk : "Medium",
-    symptoms: Array.isArray(obj.symptoms) ? (obj.symptoms as string[]) : [],
-    immediate_actions: Array.isArray(obj.immediate_actions) ? (obj.immediate_actions as string[]) : [],
-    prevention: Array.isArray(obj.prevention) ? (obj.prevention as string[]) : [],
-    environmental_factors: Array.isArray(obj.environmental_factors)
-      ? (obj.environmental_factors as string[])
-      : [],
-    demo: typeof obj.demo === "boolean" ? obj.demo : undefined,
+    prediction_type: (obj["prediction_type"] === "disease" || obj["prediction_type"] === "pest" || obj["prediction_type"] === "uncertain")
+      ? obj["prediction_type"]
+      : "disease",
+    crop: typeof obj["crop"] === "string" ? obj["crop"] : "",
+    condition: typeof obj["condition"] === "string" ? obj["condition"] : "Unknown",
+    confidence: typeof obj["confidence"] === "number" ? obj["confidence"] : 0,
+    severity: typeof obj["severity"] === "string" ? obj["severity"] : "unknown",
+    symptoms: Array.isArray(obj["symptoms"]) ? (obj["symptoms"] as string[]) : [],
+    recommendations: Array.isArray(obj["recommendations"]) ? (obj["recommendations"] as string[]) : [],
+    explainability_image_url:
+      typeof obj["explainability_image_url"] === "string" && obj["explainability_image_url"].trim()
+        ? obj["explainability_image_url"].startsWith("http://") ||
+          obj["explainability_image_url"].startsWith("https://") ||
+          obj["explainability_image_url"].startsWith("data:")
+          ? obj["explainability_image_url"]
+          : `${base}${obj["explainability_image_url"].startsWith("/") ? "" : "/"}${obj["explainability_image_url"]}`
+        : null,
+    model_version: typeof obj["model_version"] === "string" ? obj["model_version"] : "unknown",
+    status: obj["status"] === "ok" || obj["status"] === "error" ? obj["status"] : "ok",
   };
 }
 
 export async function healthCheckApi(signal?: AbortSignal): Promise<{ status: string; service: string }> {
   const base = getApiBaseUrl();
-  const res = await fetch(`${base}/api/health`, { signal });
+  const res = await fetch(`${base}/api/health`, { signal: signal ?? null });
   if (!res.ok) throw new Error(`Health check failed with status ${res.status}.`);
   const json = (await res.json()) as { status?: string; service?: string };
   return { status: json.status ?? "unknown", service: json.service ?? "CropCare AI Backend" };

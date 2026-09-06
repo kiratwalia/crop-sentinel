@@ -7,6 +7,7 @@ const severityMap: Record<Severity, { label: string; className: string; Icon: ty
   moderate: { label: "Moderate — plan this week", className: "bg-warning-soft text-warning", Icon: Info },
   high: { label: "High — act today", className: "bg-danger-soft text-danger", Icon: AlertTriangle },
   critical: { label: "Critical — act now", className: "bg-danger text-danger-foreground", Icon: ShieldAlert },
+  unknown: { label: "Unknown — uncertain", className: "bg-muted-soft text-muted-foreground", Icon: Info },
 };
 
 const riskMap: Record<RiskLevel, { label: string; className: string }> = {

@@ -23,7 +23,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Photograph a leaf, get an early read on crop disease or pest risk, weather-based alerts and clear management steps for tomato, potato, maize, wheat and rice.",
+          "Photograph a leaf, get an early read on crop disease or pest risk, weather-based alerts and clear management steps for tomato, potato, maize, grape and apple.",
       },
       { property: "og:title", content: "CropCare AI — Early Crop Disease & Pest Detection" },
       {
@@ -40,7 +40,7 @@ const steps = [
   {
     icon: Sprout,
     title: "1. Choose your crop",
-    text: "Tomato, potato, maize, wheat or rice — pick what is standing in your field today.",
+    text: "Tomato, potato, maize, grape or apple — pick what is standing in your field today.",
   },
   {
     icon: Camera,

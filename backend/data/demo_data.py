@@ -1,6 +1,6 @@
 from typing import Dict, Any, List
 
-SUPPORTED_CROPS: List[str] = ["Tomato", "Potato", "Maize", "Wheat", "Rice"]
+SUPPORTED_CROPS: List[str] = ["Tomato", "Potato", "Maize", "Grape", "Apple"]
 
 SUPPORTED_ANALYSIS_TYPES: List[str] = ["disease", "pest", "both"]
 

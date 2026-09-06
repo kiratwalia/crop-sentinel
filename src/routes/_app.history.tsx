@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ArrowRight, ScanLine, Search } from "lucide-react";
 import { AppShell } from "@/components/cropcare/app-shell";
-import { DemoBadge, SeverityBadge } from "@/components/cropcare/badges";
+import { SeverityBadge } from "@/components/cropcare/badges";
+import { CropIcon } from "@/components/cropcare/crop-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -63,8 +64,6 @@ function HistoryPage() {
       }
     >
       <div className="space-y-5">
-        <DemoBadge />
-
         <Card>
           <CardContent className="space-y-4 p-4">
             <div className="relative">
@@ -77,19 +76,20 @@ function HistoryPage() {
               />
             </div>
             <div className="flex flex-wrap gap-2">
-              {[{ id: "all", name: "All crops", emoji: "🌍" }, ...crops].map((c) => (
+              {[{ id: "all", name: "All crops" }, ...crops].map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => setCrop(c.id)}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                    "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                     crop === c.id
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border text-muted-foreground hover:bg-muted",
                   )}
                 >
-                  {c.emoji} {c.name}
+                  <CropIcon cropId={c.id} size="xs" />
+                  <span>{c.name}</span>
                 </button>
               ))}
             </div>
@@ -144,10 +144,25 @@ function HistoryPage() {
                   loading="lazy"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{finding?.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {cropInfo?.emoji} {cropInfo?.name} · {a.confidence}% confidence ·{" "}
-                    {a.mode === "auto" ? "Automatic" : a.mode === "pest" ? "Pest" : "Disease"} mode
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{finding?.name}</p>
+                    {a.isSample ? (
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        Sample
+                      </span>
+                    ) : (
+                      <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                        Real AI
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                    <CropIcon cropId={a.cropId} size="xs" />
+                    <span>{cropInfo?.name}</span>
+                    <span>·</span>
+                    <span>{a.confidence}% confidence</span>
+                    <span>·</span>
+                    <span>{a.mode === "auto" ? "Automatic" : a.mode === "pest" ? "Pest" : "Disease"} mode</span>
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {new Date(a.createdAt).toLocaleString("en-IN", {

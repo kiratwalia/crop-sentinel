@@ -22,7 +22,7 @@ import { useState } from "react";
 import { DEMO_NOTICE, cropById } from "@/data/mock";
 import { getAnyAnalysis, getFinding } from "@/lib/services/cropcare";
 import type { StoredAnalysis, Finding } from "@/types";
-import { API_SEVERITY_TO_SEVERITY, API_RISK_TO_RISK } from "@/types";
+import { API_SEVERITY_TO_SEVERITY, type RiskLevel, type Severity } from "@/types";
 
 export const Route = createFileRoute("/_app/result/$id")({
   head: () => ({
@@ -43,47 +43,56 @@ export const Route = createFileRoute("/_app/result/$id")({
   component: ResultPage,
 });
 
-function normalizeAnalysis(analysis: StoredAnalysis) {
+function normalizeAnalysis(analysis: StoredAnalysis): StoredAnalysis & {
+  findingId: string;
+  confidence: number;
+  severity: Severity;
+  riskLevel: RiskLevel;
+  affectedArea: number;
+  envFactors: Array<{ label: string; value: string; contribution: number; note: string }>;
+  isSample: boolean;
+  explainabilityImageUrl: string | null;
+} {
   if (analysis.source === "backend") {
     const b = analysis.backend;
     return {
+      source: "backend" as const,
       id: analysis.id,
       cropId: analysis.cropId,
+      mode: analysis.mode,
+      imageUrl: analysis.imageUrl,
+      fileName: analysis.fileName,
+      createdAt: analysis.createdAt,
+      backend: b,
       findingId: b.condition.toLowerCase().replace(/\s+/g, "-"),
       confidence: Math.round(b.confidence * 100),
-      severity: API_SEVERITY_TO_SEVERITY[b.severity] || "moderate",
-      riskLevel: API_RISK_TO_RISK[b.risk] || "moderate",
-      imageUrl: analysis.imageUrl,
-      affectedArea: 25, // Default since backend doesn't provide this
-      envFactors: b.environmental_factors.map((f, i) => ({
-        label: f.split(":")[0] || `Factor ${i + 1}`,
-        value: f.split(":")[1] || "Medium",
-        contribution: 50 + (i * 10),
-        note: f,
-      })),
-      isSample: b.demo || false,
-      backend: b, // Preserve backend data for finding fallback
+      severity: API_SEVERITY_TO_SEVERITY[b.severity] || "unknown",
+      riskLevel: (b.severity === "high" ? "high" : b.severity === "low" ? "low" : "moderate") as RiskLevel,
+      affectedArea: 25,
+      envFactors: [],
+      isSample: false,
+      explainabilityImageUrl: b.explainability_image_url ?? null,
     };
   }
-  return analysis;
+  return { ...analysis, source: "demo" as const, explainabilityImageUrl: null };
 }
 
-function getFindingForAnalysis(analysis: any): Finding {
-  if (analysis.backend) {
+function getFindingForAnalysis(analysis: StoredAnalysis): Finding {
+  if (analysis.source === "backend") {
     const b = analysis.backend;
     return {
-      id: analysis.findingId,
-      kind: b.type,
+      id: "backend-" + analysis.id,
+      kind: b.prediction_type === "pest" ? "pest" : "disease",
       name: b.condition,
       scientificName: b.condition,
       crops: [analysis.cropId],
       summary: `${b.condition} detected with ${Math.round(b.confidence * 100)}% confidence.`,
       symptoms: b.symptoms,
-      immediateActions: b.immediate_actions,
-      prevention: b.prevention,
+      immediateActions: b.recommendations,
+      prevention: [],
       organicOptions: ["Neem oil", "Copper fungicide"],
       chemicalOptions: ["Chlorothalonil", "Mancozeb"],
-      favourableConditions: b.environmental_factors,
+      favourableConditions: [],
     };
   }
   return getFinding(analysis.findingId)!;
@@ -124,6 +133,49 @@ function ResultPage() {
     );
   }
 
+  // Handle uncertain predictions
+  if (analysis.source === "backend" && analysis.backend.prediction_type === "uncertain") {
+    return (
+      <AppShell title="Analysis result">
+        <Card>
+          <CardContent className="p-10 text-center">
+            <AlertTriangle className="mx-auto size-12 text-warning mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Could not determine condition</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              The AI could not reliably determine the condition from this image. The confidence level was below the required threshold.
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Please try uploading a clearer, closer photo of the leaf in good lighting conditions.
+            </p>
+            <Link to="/analyze" className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2">
+              Try again with a different photo
+            </Link>
+          </CardContent>
+        </Card>
+      </AppShell>
+    );
+  }
+
+  // Handle error status
+  if (analysis.source === "backend" && analysis.backend.status === "error") {
+    return (
+      <AppShell title="Analysis result">
+        <Card>
+          <CardContent className="p-10 text-center">
+            <AlertTriangle className="mx-auto size-12 text-danger mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Analysis failed</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              There was an error processing your image. Please try again or contact support if the problem persists.
+            </p>
+            <Link to="/analyze" className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2">
+              Try again
+            </Link>
+          </CardContent>
+        </Card>
+      </AppShell>
+    );
+  }
+
   const finding = getFindingForAnalysis(analysis);
   const crop = cropById(analysis.cropId)!;
 
@@ -155,40 +207,56 @@ function ResultPage() {
                 <Label htmlFor="heat" className="text-xs text-muted-foreground">
                   Attention map
                 </Label>
-                <Switch id="heat" checked={heatmap} onCheckedChange={setHeatmap} />
+                <Switch
+                  id="heat"
+                  checked={heatmap && Boolean(analysis.explainabilityImageUrl)}
+                  onCheckedChange={setHeatmap}
+                  disabled={!analysis.explainabilityImageUrl}
+                />
               </div>
             </CardHeader>
             <CardContent>
               <div className="relative overflow-hidden rounded-xl border border-border">
                 <img
-                  src={analysis.imageUrl}
+                  src={
+                    heatmap && analysis.explainabilityImageUrl
+                      ? analysis.explainabilityImageUrl
+                      : analysis.imageUrl
+                  }
                   alt={`${crop.name} leaf analysed for ${finding.name}`}
-                  className="h-72 w-full object-cover"
+                  className="h-72 w-full object-cover transition-opacity duration-200"
                 />
-                {heatmap && (
-                  <>
-                    <div
-                      className="pointer-events-none absolute inset-0"
-                      style={{
-                        background:
-                          "radial-gradient(circle at 38% 44%, rgba(239,68,68,0.55), rgba(245,158,11,0.35) 32%, transparent 58%), radial-gradient(circle at 68% 66%, rgba(239,68,68,0.4), transparent 45%)",
-                      }}
-                    />
-                    <span className="absolute bottom-3 left-3 rounded-full bg-background/85 px-3 py-1 text-[11px] font-medium">
-                      Placeholder attention map
-                    </span>
-                  </>
+                {heatmap && analysis.explainabilityImageUrl && (
+                  <span className="absolute bottom-3 left-3 rounded-full bg-background/85 px-3 py-1 text-[11px] font-medium backdrop-blur-sm">
+                    Grad-CAM attention map
+                  </span>
+                )}
+                {!analysis.explainabilityImageUrl && (
+                  <span className="absolute bottom-3 left-3 rounded-full bg-background/85 px-3 py-1 text-[11px] font-medium backdrop-blur-sm">
+                    Original photo
+                  </span>
                 )}
               </div>
               <div className="mt-4 rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
                 <p className="flex items-center gap-2 font-medium text-foreground">
                   <Eye className="size-4 text-primary" /> How the model explains itself
                 </p>
-                <p className="mt-1.5">
-                  In the full system this overlay is a Grad-CAM heat map showing which parts of the
-                  leaf pushed the prediction. Here it is a visual placeholder so you can see where
-                  the explanation will appear.
-                </p>
+                {analysis.explainabilityImageUrl ? (
+                  <>
+                    <p className="mt-1.5">
+                      This Grad-CAM visualization highlights the regions and patterns on the leaf that
+                      most strongly influenced the model&apos;s diagnosis. Warmer colors indicate areas of
+                      higher importance during feature extraction.
+                    </p>
+                    <p className="mt-1.5 text-xs text-muted-foreground/80">
+                      Visual explanation indicates model feature attribution and does not biologically prove disease presence.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1.5">
+                    No explainability heatmap is available for this prediction. Explainability maps are generated when the model makes a confident diagnosis on supported crop leaves.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -40,3 +40,7 @@ dist-ssr
 backend/vendor/
 __pycache__/
 *.pyc
+
+# Generated ML artifacts
+backend/static/explainability/
+backend/models/cropcare_model_extracted/
