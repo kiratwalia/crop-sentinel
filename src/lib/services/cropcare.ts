@@ -44,6 +44,7 @@ import { API_SEVERITY_TO_SEVERITY } from "@/types";
 import {
   analyzeImageApi,
   type BackendApiError,
+  getWeatherApi,
   validateImageForApi,
   type ImageValidationError,
 } from "./cropcareApi";
@@ -78,7 +79,50 @@ function saveBackendAnalyses() {
 export type { BackendApiError, ImageValidationError };
 
 export const getCrops = () => delay<Crop[]>(crops);
-export const getWeather = () => delay<WeatherNow>(weatherNow);
+
+/** Where a `WeatherReading` actually came from, so the UI can be honest about it. */
+export type WeatherSource = "live" | "cached" | "demo";
+
+export type WeatherReading = WeatherNow & { source: WeatherSource };
+
+/**
+ * Live weather from the FastAPI backend, falling back to the static demo
+ * reading (`weatherNow` in `@/data/mock`) if the backend is unreachable or
+ * the provider has no data. Mirrors the backend-first/demo-fallback pattern
+ * already used by `getAnyAnalysis`.
+ *
+ * Pass `lat`/`lng` from `useGeolocation()` (see `src/hooks/use-geolocation.ts`)
+ * once the browser has granted location permission; omit them (or pass
+ * `undefined`) to use the backend's default demo location. Call sites must
+ * wrap this in an arrow function when using it as a TanStack Query
+ * `queryFn` — e.g. `queryFn: () => getWeather(lat, lng)` — since React
+ * Query calls bare `queryFn`s with its own context object, not `(lat, lng)`.
+ *
+ * The returned `source` field tells the UI what it's actually showing:
+ *  - "live"  -> fresh reading from the weather provider just now
+ *  - "cached"-> provider was briefly down, showing a recent-but-not-fresh reading
+ *  - "demo"  -> backend/provider unreachable, showing the static sample data
+ * Never label demo data as live, or live data as demo — surface `source`
+ * in the UI wherever the weather card cites a source (see Dashboard).
+ */
+export async function getWeather(lat?: number, lng?: number): Promise<WeatherReading> {
+  try {
+    const resp = await getWeatherApi({ lat, lng });
+    if (resp.status !== "unavailable" && resp.data) {
+      return { ...resp.data, source: resp.status === "cached" ? "cached" : "live" };
+    }
+    // Backend reachable but has no data (provider down, no cache yet) —
+    // fall through to the demo reading rather than showing an empty state.
+    return { ...weatherNow, source: "demo" };
+  } catch {
+    // Backend unreachable entirely (not running, wrong port, network
+    // error) — keep the UI usable with the demo reading instead of
+    // crashing the Dashboard/Risk pages.
+    const fallback = await delay<WeatherNow>(weatherNow, 0);
+    return { ...fallback, source: "demo" };
+  }
+}
+
 export const getRiskScores = () => delay<RiskScores>(riskScores);
 export const getRiskForecast = () => delay<RiskForecastPoint[]>(riskForecast);
 export const getHealthTrend = () => delay<HealthTrendPoint[]>(healthTrend);

@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { crops } from "@/data/mock";
+import { useGeolocation } from "@/hooks/use-geolocation";
 import { getRiskForecast, getRiskScores, getWeather } from "@/lib/services/cropcare";
 
 export const Route = createFileRoute("/_app/risk")({
@@ -57,7 +58,11 @@ const cropRisk: Record<string, { disease: number; pest: number }> = {
 };
 
 function RiskPage() {
-  const weather = useQuery({ queryKey: ["weather"], queryFn: getWeather });
+  const geo = useGeolocation();
+  const weather = useQuery({
+    queryKey: ["weather", geo.lat, geo.lng],
+    queryFn: () => getWeather(geo.lat, geo.lng),
+  });
   const scores = useQuery({ queryKey: ["risk"], queryFn: getRiskScores });
   const forecast = useQuery({ queryKey: ["forecast"], queryFn: getRiskForecast });
 

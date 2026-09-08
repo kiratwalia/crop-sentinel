@@ -7,6 +7,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from routes.analysis import router as analysis_router
+from routes.weather import router as weather_router
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -84,6 +85,7 @@ async def health_check():
 
 
 app.include_router(analysis_router)
+app.include_router(weather_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -95,5 +97,6 @@ async def root():
         "endpoints": {
             "health": "GET /api/health",
             "analyze": "POST /api/analyze (multipart/form-data: crop, analysis_type, image)",
+            "weather": "GET /api/weather (query: lat, lng)",
         },
     }

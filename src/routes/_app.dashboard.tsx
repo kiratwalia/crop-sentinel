@@ -27,6 +27,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cropById } from "@/data/mock";
+import { useGeolocation } from "@/hooks/use-geolocation";
 import { getFinding } from "@/lib/services/cropcare";
 import {
   getAlerts,
@@ -64,8 +65,12 @@ function healthTone(score: number) {
 }
 
 function Dashboard() {
+  const geo = useGeolocation();
   const crops = useQuery({ queryKey: ["crops"], queryFn: getCrops });
-  const weather = useQuery({ queryKey: ["weather"], queryFn: getWeather });
+  const weather = useQuery({
+    queryKey: ["weather", geo.lat, geo.lng],
+    queryFn: () => getWeather(geo.lat, geo.lng),
+  });
   const risk = useQuery({ queryKey: ["risk"], queryFn: getRiskScores });
   const trend = useQuery({ queryKey: ["trend"], queryFn: getHealthTrend });
   const alerts = useQuery({ queryKey: ["alerts"], queryFn: getAlerts });
@@ -270,7 +275,12 @@ function Dashboard() {
                 ))}
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                Updated {weather.data?.updatedAt ?? "—"} · demo weather feed
+                Updated {weather.data?.updatedAt ?? "—"} ·{" "}
+                {weather.data?.source === "live"
+                  ? "live weather"
+                  : weather.data?.source === "cached"
+                    ? "recent cached reading"
+                    : "demo weather feed"}
               </p>
             </CardContent>
           </Card>

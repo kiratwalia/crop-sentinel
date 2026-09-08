@@ -16,6 +16,7 @@ import type {
   BackendAnalysisResponse,
   BackendApiError,
   CropId,
+  WeatherNow,
 } from "@/types";
 import { crops as mockCrops } from "@/data/mock";
 
@@ -206,4 +207,90 @@ export async function healthCheckApi(signal?: AbortSignal): Promise<{ status: st
   if (!res.ok) throw new Error(`Health check failed with status ${res.status}.`);
   const json = (await res.json()) as { status?: string; service?: string };
   return { status: json.status ?? "unknown", service: json.service ?? "CropCare AI Backend" };
+}
+
+/** Raw envelope returned by GET /api/weather. */
+interface BackendWeatherResponse {
+  status: "ok" | "cached" | "unavailable";
+  data: WeatherNow | null;
+  message?: string | null;
+}
+
+/**
+ * Fetch live weather from the FastAPI backend.
+ *
+ * Unlike `analyzeImageApi`, this never throws for provider-down
+ * conditions — the backend itself absorbs Open-Meteo failures and
+ * returns `status: "unavailable"` / `"cached"` with HTTP 200. This
+ * function only throws for genuine transport failures (network down,
+ * backend unreachable, bad JSON), which `getWeather()` in `cropcare.ts`
+ * catches and falls back to the demo mock for.
+ *
+ * @param lat/lng - optional; omit to use the backend's demo default
+ *   location (useful before geolocation capture resolves).
+ */
+export async function getWeatherApi(
+  input: { lat?: number | undefined; lng?: number | undefined; signal?: AbortSignal | undefined } = {},
+): Promise<BackendWeatherResponse> {
+  const base = getApiBaseUrl();
+  const params = new URLSearchParams();
+  if (typeof input.lat === "number") params.set("lat", String(input.lat));
+  if (typeof input.lng === "number") params.set("lng", String(input.lng));
+  const qs = params.toString();
+
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/weather${qs ? `?${qs}` : ""}`, {
+      signal: input.signal ?? null,
+    });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error && err.name === "AbortError"
+        ? "Weather request cancelled."
+        : `Could not reach the CropCare backend at ${base} for weather.`,
+    );
+  }
+
+  if (!res.ok) {
+    // 400/422 = bad coordinates we sent; 5xx would be a real backend bug
+    // (the route is designed to always return 200 for provider issues).
+    throw new Error(`Weather request failed with status ${res.status}.`);
+  }
+
+  const rawText = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = rawText ? (JSON.parse(rawText) as unknown) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Unexpected response from the weather service.");
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const status = obj["status"] === "ok" || obj["status"] === "cached" || obj["status"] === "unavailable"
+    ? obj["status"]
+    : "unavailable";
+  const rawData = obj["data"];
+  let data: WeatherNow | null = null;
+  if (rawData && typeof rawData === "object") {
+    const d = rawData as Record<string, unknown>;
+    data = {
+      temperatureC: typeof d["temperatureC"] === "number" ? d["temperatureC"] : 0,
+      humidity: typeof d["humidity"] === "number" ? d["humidity"] : 0,
+      rainfallMm: typeof d["rainfallMm"] === "number" ? d["rainfallMm"] : 0,
+      windKph: typeof d["windKph"] === "number" ? d["windKph"] : 0,
+      condition: typeof d["condition"] === "string" ? d["condition"] : "Unknown",
+      location: typeof d["location"] === "string" ? d["location"] : "",
+      updatedAt: typeof d["updatedAt"] === "string" ? d["updatedAt"] : new Date().toISOString(),
+    };
+  }
+
+  return {
+    status,
+    data,
+    message: typeof obj["message"] === "string" ? obj["message"] : null,
+  };
 }
