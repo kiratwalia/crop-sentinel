@@ -3,12 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { AlertTriangle, CalendarClock, ShieldCheck, TriangleAlert } from "lucide-react";
 import { AppShell } from "@/components/cropcare/app-shell";
-import { DemoBadge } from "@/components/cropcare/badges";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { crops, cropById } from "@/data/mock";
-import { getRecommendations } from "@/lib/services/cropcare";
+import { useGeolocation } from "@/hooks/use-geolocation";
+import { fetchRecommendationsApi } from "@/lib/services/recommendationsApi";
 import type { Recommendation } from "@/types";
 
 export const Route = createFileRoute("/_app/recommendations")({
@@ -63,7 +64,7 @@ function RecommendationCard({ rec, ring }: { rec: Recommendation; ring: string }
     <Card className={cn("card-lift", ring)}>
       <CardHeader>
         <CardDescription>
-          {crop?.emoji} {crop?.name} · {crop?.localName}
+          {crop?.name ?? rec.cropId} {crop?.localName ? `· ${crop.localName}` : ""}
         </CardDescription>
         <CardTitle className="text-base">{rec.title}</CardTitle>
       </CardHeader>
@@ -109,21 +110,28 @@ function RecommendationCard({ rec, ring }: { rec: Recommendation; ring: string }
 }
 
 function RecommendationsPage() {
-  const { data, isLoading } = useQuery({ queryKey: ["recs"], queryFn: getRecommendations });
+  const geo = useGeolocation();
   const [crop, setCrop] = useState("all");
 
-  const filtered = (data ?? []).filter((r) => crop === "all" || r.cropId === crop);
+  const { data, isLoading } = useQuery({
+    queryKey: ["recommendations", crop, geo.lat, geo.lng],
+    queryFn: () =>
+      fetchRecommendationsApi({
+        crop,
+        coords: { lat: geo.lat, lng: geo.lng },
+      }),
+  });
+
+  const filtered = (data ?? []).filter((r) => crop === "all" || r.cropId.toLowerCase() === crop.toLowerCase());
 
   return (
     <AppShell
       title="Recommendations"
-      subtitle="What to do first, in plain language"
+      subtitle="Context-aware crop management actions based on risk and screening"
     >
       <div className="space-y-6">
-        <DemoBadge />
-
         <div className="flex flex-wrap gap-2">
-          {[{ id: "all", name: "All crops", emoji: "🌍" }, ...crops].map((c) => (
+          {[{ id: "all", name: "All crops" }, ...crops].map((c) => (
             <button
               key={c.id}
               type="button"
@@ -135,7 +143,7 @@ function RecommendationsPage() {
                   : "border-border text-muted-foreground hover:bg-muted",
               )}
             >
-              {c.emoji} {c.name}
+              {c.name}
             </button>
           ))}
         </div>
@@ -167,9 +175,10 @@ function RecommendationsPage() {
           <CardContent className="flex gap-3 p-5 text-sm text-muted-foreground">
             <TriangleAlert className="size-5 shrink-0 text-warning" />
             <p>
-              Safety first: always read the product label, wear gloves and a mask while spraying,
-              respect the waiting period before harvest, and confirm with your local Krishi Vigyan
-              Kendra before using any chemical. These demo recommendations are illustrative only.
+              Safety first: always read the product label, wear gloves and a protective mask while spraying,
+              respect the mandatory pre-harvest waiting period (PHI), and confirm with your local Krishi Vigyan
+              Kendra or agricultural extension officer before using any chemical. Recommendations are based on
+              environmental risk factors and screening observations.
             </p>
           </CardContent>
         </Card>
